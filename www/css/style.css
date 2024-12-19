@@ -507,3 +507,16 @@ textarea.form-control {
 .logged-out {
     display: none;
 }
+
+.btn-like {
+    cursor: pointer;
+    background-color: transparent;
+    border: none;
+    color: #007BFF;
+    font-size: 1em;
+    padding: 0;
+}
+
+.btn-like.liked {
+    color: #FF4500; /* 赤色でいいね状態を表現 */
+}

@@ -178,34 +178,22 @@ function createPostElement(post) {
         </div>
     ` : '';
 
+    const liked = post.likes && post.likes[currentUser?.uid];
+    const likeButtonClass = liked ? 'liked' : '';
+
     return `
         <div class="post" id="post-${post.id}">
             <div class="post-header">
                 <span class="post-author">${escapeHtml(post.author)}</span>
-                <!-- 編集権限があれば、編集・削除機能を表示 -->
                 ${actions}
             </div>
             <div class="post-content">${escapeHtml(post.content)}</div>
-            <div class="edit-form">
-                <textarea class="form-control" id="edit-${post.id}"></textarea>
-                <div class="button-group">
-                    <button class="btn-primary" onclick="updatePost('${post.id}')">
-                        更新
-                    </button>
-                    <button class="btn-cancel" onclick="cancelEdit('${post.id}')">
-                        キャンセル
-                    </button>
-                </div>
-            </div>
             <div class="post-footer">
-                <span class="post-time">
-                    ${formatTimestamp(post.timestamp)}
-                </span>
-                ${post.updatedAt ? `
-                    <span class="post-updated">
-                        (編集済み: ${formatTimestamp(post.updatedAt)})
-                    </span>
-                ` : ''}
+                <span class="post-time">${formatTimestamp(post.timestamp)}</span>
+                ${post.updatedAt ? `<span class="post-updated">(編集済み: ${formatTimestamp(post.updatedAt)})</span>` : ''}
+                <button class="btn-like ${likeButtonClass}" onclick="toggleLike('${post.id}')">
+                    いいね！ (<span id="like-count-${post.id}">${Object.keys(post.likes || {}).length}</span>)
+                </button>
             </div>
         </div>
     `;
@@ -507,6 +495,40 @@ $(function() {
     // 投稿一覧の初期読み込み
     loadPosts();
 });
+
+function toggleLike(postId) {
+    if (!currentUser) {
+        showMessage('いいね！するにはログインが必要です', 'error');
+        return;
+    }
+
+    const userId = currentUser.uid;
+    const postRef = postsRef.child(postId).child('likes');
+    postRef.once('value', (snapshot) => {
+        const likes = snapshot.val() || {};
+        const alreadyLiked = !!likes[userId];
+
+        if (alreadyLiked) {
+            // いいね！を取り消す
+            postRef.child(userId).remove()
+                .then(() => {
+                    showMessage('いいね！を取り消しました');
+                })
+                .catch((error) => {
+                    showMessage('いいね！の取り消しに失敗しました：' + error.message, 'error');
+                });
+        } else {
+            // いいね！を追加
+            postRef.child(userId).set(true)
+                .then(() => {
+                    showMessage('いいね！しました');
+                })
+                .catch((error) => {
+                    showMessage('いいね！に失敗しました：' + error.message, 'error');
+                });
+        }
+    });
+}
 
 // クリーンアップ処理
 window.addEventListener('unload', function() {

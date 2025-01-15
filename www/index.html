@@ -31,10 +31,17 @@ function showMessage(message, type = 'success') {
             ${message}
         </div>
     `);
+    const messageArea1 = $('#messageArea1');//koko
+    messageArea1.html(`
+        <div class="message ${type}">
+            ${message}
+        </div>
+    `);
     
     // 3秒後にメッセージを消す
     setTimeout(() => {
         messageArea.empty();
+        messageArea1.empty();//kokoko
     }, 3000);
 }
 
@@ -175,25 +182,45 @@ function createPostElement(post) {
             <button class="btn-delete" onclick="deletePost('${post.id}')">
                 削除
             </button>
+            <button class="btn-come" onclick="startcome('${post.id}')">
+                コメント
+            </button>
         </div>
     ` : '';
-
-    const liked = post.likes && post.likes[currentUser?.uid];
-    const likeButtonClass = liked ? 'liked' : '';
 
     return `
         <div class="post" id="post-${post.id}">
             <div class="post-header">
                 <span class="post-author">${escapeHtml(post.author)}</span>
+                <!-- 編集権限があれば、編集・削除機能を表示 -->
                 ${actions}
             </div>
             <div class="post-content">${escapeHtml(post.content)}</div>
+            <div class="edit-form">
+                <textarea class="form-control" id="edit-${post.id}"></textarea>
+                <div class="button-group">
+                    <button class="btn-primary" onclick="updatePost('${post.id}')">
+                        更新
+                    </button>
+
+                    <button class="btn-cancel" onclick="cancelEdit('${post.id}')">
+                        キャンセル
+                    </button>
+
+                    <button class="btn-primaryc" onclick="addComment('${post.id}')">
+                        コメント
+                    </button>
+                </div>
+            </div>
             <div class="post-footer">
-                <span class="post-time">${formatTimestamp(post.timestamp)}</span>
-                ${post.updatedAt ? `<span class="post-updated">(編集済み: ${formatTimestamp(post.updatedAt)})</span>` : ''}
-                <button class="btn-like ${likeButtonClass}" onclick="toggleLike('${post.id}')">
-                    いいね！ (<span id="like-count-${post.id}">${Object.keys(post.likes || {}).length}</span>)
-                </button>
+                <span class="post-time">
+                    ${formatTimestamp(post.timestamp)}
+                </span>
+                ${post.updatedAt ? `
+                    <span class="post-updated">
+                        (編集済み: ${formatTimestamp(post.updatedAt)})
+                    </span>
+                ` : ''}
             </div>
         </div>
     `;
@@ -265,6 +292,7 @@ function closeModal(modalId) {
 // 更新処理のハンドラ
 function handleUpdate() {
     if (!currentEditId) return;
+    if (!currentEditId1) return;
     
     const content = $('#editContent').val();
     if (!validateContent(content)) return;
@@ -275,6 +303,7 @@ function handleUpdate() {
     };
 
     postsRef.child(currentEditId).update(updates)
+    postsRef.child(currentEditId1).update(updates)
         .then(() => {
             showMessage('投稿を更新しました');
             closeModal('editModal');
@@ -285,6 +314,8 @@ function handleUpdate() {
             showMessage('更新に失敗しました：' + error.message, 'error');
         });
 }
+
+
 
 // 削除処理のハンドラ
 function handleDelete() {
@@ -330,6 +361,16 @@ function startEdit(postId) {
     updateCharacterCount('editContent', 'editContentCount', 1000);
     showModal('editModal');
 }
+//コメント開始
+function startcome(postId) {
+    currentEditId = postId;
+    const post = $(`#post-${postId}`);
+    const content = post.find('.post-content').text();
+    
+    $('#comeContent').val(content);
+    updateCharacterCount('comeContent', 'comeContentCount', 1000);
+    showModal('comeModal');
+}
 
 // 編集のキャンセル
 function cancelEdit(postId) {
@@ -359,6 +400,96 @@ function updatePost(postId) {
             showMessage('更新に失敗しました：' + error.message, 'error');
         });
 }
+
+
+// コメント機能の追加：コメントを投稿する関数
+function addComment(postId) {
+   const commentInput = $(`#come-${postId}`).val().trim();
+   if (!validateContent(commentInput)) return;
+   // コメントデータの作成
+   const commentData = {
+       content: commentInput,
+       author: currentUser.email,
+       timestamp: firebase.database.ServerValue.TIMESTAMP
+   };
+   // Firebaseのコメントセクションに追加
+   const commentsRef = postsRef.child(postId).child('comments');
+   commentsRef.push(commentData)
+       .then(() => {
+           showMessage('コメントを追加しました');
+           $(`#come-${postId}`).val(''); // 入力フィールドをクリア
+           closeModal('comeModal');
+       })
+       .catch((error) => {
+           showMessage('コメント追加に失敗しました：' + error.message, 'error');
+       });
+}
+
+// コメントを表示する関数
+function renderComments(postId, comments) {
+   const commentsContainer = $(`#comments-${postId}`);
+   commentsContainer.empty();
+   if (!comments || Object.keys(comments).length === 0) {
+       commentsContainer.html('<p class="no-comments">コメントはありません</p>');
+       return;
+   }
+   // コメント一覧を生成
+   Object.keys(comments).forEach((commentId) => {
+       const comment = comments[commentId];
+       commentsContainer.append(`
+<div class="comment">
+<div class="comment-header">
+<span class="comment-author">${escapeHtml(comment.author)}</span>
+<span class="comment-time">${formatTimestamp(comment.timestamp)}</span>
+</div>
+<div class="comment-content">${escapeHtml(comment.content)}</div>
+</div>
+       `);
+   });
+}
+
+// 投稿を表示する関数（コメントセクションの統合）
+function createPostElement(post) {
+   const canEdit = canEditPost(post);
+   const actions = canEdit ? `
+<div class="post-actions">
+ <button class="btn-edit" onclick="startEdit('${post.id}')">編集</button>
+<button class="btn-delete" onclick="deletePost('${post.id}')">削除</button>
+<!--<button class="btn-come" onclick="startComment('${post.id}')">コメント</button> -->
+</div>
+   ` : '';
+   return `
+<div class="post" id="post-${post.id}">
+<div class="post-header">
+<span class="post-author">${escapeHtml(post.author)}</span>
+               ${actions}
+</div>
+<div class="post-content">${escapeHtml(post.content)}</div>
+<div class="post-footer">
+<span class="post-time">${formatTimestamp(post.timestamp)}</span>
+               ${post.updatedAt ? `<span class="post-updated">(編集済み: ${formatTimestamp(post.updatedAt)})</span>` : ''}
+</div>
+<div class="comments-container" id="comments-${post.id}"></div>
+<div class="comment-form">
+<textarea id="come-${post.id}" placeholder="コメントを入力"></textarea>
+<button class="btn-primary" onclick="addComment('${post.id}')">コメント追加</button>
+</div>
+</div>
+   `;
+}
+// コメントモーダルの修正：統一された操作
+function startComment(postId) {
+   currentEditId = postId;
+   const post = $(`#post-${postId}`);
+   const commentsRef = postsRef.child(postId).child('comments');
+   // コメントのリスナーを設定
+   commentsRef.on('value', (snapshot) => {
+       const comments = snapshot.val();
+       renderComments(postId, comments);
+   });
+   showModal('comeModal');
+}
+
 
 // 投稿の削除
 function deletePost(postId) {
@@ -496,40 +627,6 @@ $(function() {
     loadPosts();
 });
 
-function toggleLike(postId) {
-    if (!currentUser) {
-        showMessage('いいね！するにはログインが必要です', 'error');
-        return;
-    }
-
-    const userId = currentUser.uid;
-    const postRef = postsRef.child(postId).child('likes');
-    postRef.once('value', (snapshot) => {
-        const likes = snapshot.val() || {};
-        const alreadyLiked = !!likes[userId];
-
-        if (alreadyLiked) {
-            // いいね！を取り消す
-            postRef.child(userId).remove()
-                .then(() => {
-                    showMessage('いいね！を取り消しました');
-                })
-                .catch((error) => {
-                    showMessage('いいね！の取り消しに失敗しました：' + error.message, 'error');
-                });
-        } else {
-            // いいね！を追加
-            postRef.child(userId).set(true)
-                .then(() => {
-                    showMessage('いいね！しました');
-                })
-                .catch((error) => {
-                    showMessage('いいね！に失敗しました：' + error.message, 'error');
-                });
-        }
-    });
-}
-
 // クリーンアップ処理
 window.addEventListener('unload', function() {
     if (postsListener) {
@@ -542,7 +639,7 @@ window.addEventListener('unload', function() {
 <body>
     <div class="container">
         <h1>掲示板アプリ</h1>
-        
+
         <!-- メッセージ表示エリア -->
         <div id="messageArea"></div>
 
@@ -593,7 +690,24 @@ window.addEventListener('unload', function() {
                     <option value="oldest">古い順</option>
                 </select>
             </div>
-            <div id="postsList"></div>
+            <div id="postsList">
+                <!-- 投稿テンプレート -->
+                <div class="post-item" id="postTemplate" style="display: none;">
+                <p class="post-content">投稿内容: <span class="content"></span></p>
+                <p class="post-author">投稿者: <span class="author"></span></p>
+                <p class="post-date">
+                投稿日時: <span class="date"></span>
+                <button class="btn-primaryc add-comment-button">コメントする</button>
+                </p>
+            <div class="comment-section">
+            <h4>コメント</h4>
+                <div class="comments-list">
+                <!-- コメントはここに動的に追加されます -->
+                </div>
+                    <textarea class="comment-input form-control" placeholder="コメントを入力してください"></textarea>
+                    </div>
+                </div>
+            </div>
             <div id="loadingSpinner" class="loading-spinner" style="display: none;">
                 <div class="spinner"></div>
                 <p>読み込み中...</p>
@@ -640,5 +754,24 @@ window.addEventListener('unload', function() {
             </div>
         </div>
     </div>
+    <!-- コメントモーダルウィンドウ -->
+    <div id="comeModal" class="modal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>投稿にコメント</h3>
+                <button class="modal-close" onclick="closeModal('comeModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <textarea id="comeContent" class="form-control"></textarea>
+                    <small class="character-count" id="comeContentCount">0/1000</small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button onclick="handleUpdate()" class="btn-primaryc">コメントする</button>
+                <button onclick="closeModal('comeModal')" class="btn-cancel">キャンセル</button>
+            </div>
+        </div>
+    </div>
 </body>
-</html>
